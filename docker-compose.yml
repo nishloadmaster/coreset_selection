@@ -3,21 +3,22 @@ version: '3.8'
 services:
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: ai-model-improver-backend
     ports:
       - "8050:8050"
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/static:/app/static
+      - ./zcore_score:/app/zcore_score
     environment:
       - PYTHONPATH=/app
       - BACKEND_HOST=0.0.0.0
       - BACKEND_PORT=8050
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8050/health"]
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8050/health').raise_for_status()"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -11,6 +11,7 @@ services:
     volumes:
       - uploads_data:/app/uploads
       - static_data:/app/static
+      - zcore_score:/app/zcore_score
     environment:
       - PYTHONPATH=/app
       - BACKEND_HOST=0.0.0.0

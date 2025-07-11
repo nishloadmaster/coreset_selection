@@ -129,7 +129,7 @@ def change_permissions_and_copy(upload_folder: Path) -> Dict[str, Any]:
         print(f"Permissions changed for folder: {upload_folder}")
         
         # Copy the folder to zcore_score directory
-        zcore_score_dir = Path("/home/vp-dev/projects/coreset_selection/zcore_score/data")
+        zcore_score_dir = Path("/app/coreset_selection/zcore_score/data")
         zcore_score_dir.mkdir(parents=True, exist_ok=True)
         
         # Create a unique name for the copied folder
@@ -151,7 +151,17 @@ def change_permissions_and_copy(upload_folder: Path) -> Dict[str, Any]:
         _name = Path(target_folder).name
         print("folder name: ", Path(target_folder).name)
         print("running pipeline")
-        os.system(f"./run_pipeline.sh {_name}")
+        
+        # Change to zcore_score directory and run pipeline
+        original_cwd = os.getcwd()
+        try:
+            os.chdir("/app/zcore_score")
+            print(f"Changed to directory: {os.getcwd()}")
+            os.system(f"./run_pipeline.sh {_name}")
+        finally:
+            os.chdir(original_cwd)
+            print(f"Restored to directory: {os.getcwd()}")
+        
         return {
             "status": "success",
             "original_folder": str(upload_folder),
@@ -206,7 +216,8 @@ def extract_zip_background(zip_path: Path) -> Dict[str, Any]:
             "upload_id": upload_id,
             "processed_files": len(all_images),
             "output_folder": str(upload_folder),
-            "permissions_result": result
+            "permissions_result": result,
+            "pipeline_output": result.get("pipeline_output", {})
         }
         
     except Exception as e:
@@ -257,7 +268,8 @@ async def extract_zip_sync(zip_path: Path) -> Dict[str, Any]:
             "processed_files": len(all_images),
             "output_folder": str(upload_folder),
             "files": all_images,
-            "permissions_result": result
+            "permissions_result": result,
+            "pipeline_output": result.get("pipeline_output", {})
         }
         
     except Exception as e:
