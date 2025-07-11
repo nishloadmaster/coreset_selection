@@ -9,7 +9,7 @@ Author: AI Model Improver Team
 Version: 1.0.0
 """
 
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks, Query
+from fastapi import FastAPI, UploadFile, File, BackgroundTasks, Query, Header
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -20,6 +20,7 @@ import os
 import zipfile
 import uuid
 import asyncio
+import json
 from typing import Dict, List, Optional, Any
 
 # Initialize FastAPI application
@@ -216,6 +217,114 @@ async def upload_zip(
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
+@app.post("/process_data")
+async def process_data(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    x_process_settings: Optional[str] = Header(None, alias="X-Process-Settings")
+) -> Dict[str, Any]:
+    """
+    Upload and process data with model selection and processing settings.
+    
+    This endpoint handles file uploads with additional processing settings
+    sent via JSON in the X-Process-Settings header.
+    
+    Args:
+        background_tasks (BackgroundTasks): FastAPI background tasks
+        file (UploadFile): The uploaded zip file
+        x_process_settings (str): JSON string containing processing settings
+        
+    Returns:
+        Dict[str, Any]: Processing status and results
+    """
+    try:
+        # Validate file type
+        if not file.filename or not file.filename.lower().endswith('.zip'):
+            return JSONResponse(
+                status_code=400, 
+                content={"error": "File must be a zip file"}
+            )
+        
+        # Parse processing settings from header
+        processing_settings = {}
+        if x_process_settings:
+            try:
+                processing_settings = json.loads(x_process_settings)
+                print(f"Processing settings received: {processing_settings}")
+            except json.JSONDecodeError as e:
+                print(f"Error parsing processing settings: {e}")
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "Invalid JSON in X-Process-Settings header"}
+                )
+        
+        # Save zip file to uploads directory
+        zip_filename = file.filename
+        counter = 1
+        original_name = zip_filename
+        while (ZIP_UPLOAD_DIR / zip_filename).exists():
+            name_parts = original_name.rsplit('.', 1)
+            if len(name_parts) > 1:
+                zip_filename = f"{name_parts[0]}_{counter}.{name_parts[1]}"
+            else:
+                zip_filename = f"{original_name}_{counter}"
+            counter += 1
+        
+        zip_path = ZIP_UPLOAD_DIR / zip_filename
+        
+        # Save the uploaded file
+        with open(zip_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        print(f"Processing data file saved to: {zip_path}")
+        
+        # Create a unique folder for this upload
+        upload_id = str(uuid.uuid4())
+        upload_folder = UPLOAD_DIR / upload_id
+        upload_folder.mkdir(parents=True, exist_ok=True)
+        
+        # Use MediaProcessor with custom settings if provided
+        if processing_settings.get('processing_settings'):
+            settings = processing_settings['processing_settings']
+            processor = MediaProcessor(
+                zip_path, 
+                upload_folder,
+                max_frames_per_video=settings.get('max_frames_per_video', 100),
+                frame_interval=settings.get('frame_interval', 1)
+            )
+        else:
+            processor = MediaProcessor(zip_path, upload_folder)
+        
+        # Process the file
+        all_images = processor.process()
+        
+        # Store processing settings for future reference
+        settings_file = upload_folder / "processing_settings.json"
+        with open(settings_file, 'w') as f:
+            json.dump(processing_settings, f, indent=2)
+        
+        print(f"Data processing complete, {len(all_images)} files processed.")
+        print(f"Files saved to: {upload_folder}")
+        print(f"Processing settings: {processing_settings}")
+        
+        return {
+            "status": "success",
+            "message": "Data processed successfully with model settings",
+            "filename": zip_filename,
+            "path": str(zip_path),
+            "upload_id": upload_id,
+            "processed_files": len(all_images),
+            "output_folder": str(upload_folder),
+            "model_name": processing_settings.get('model_name', ''),
+            "prune_factor": processing_settings.get('prune_factor', 0.5),
+            "processing_settings": processing_settings
+        }
+        
+    except Exception as e:
+        print(f"Error during data processing: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
 @app.get("/list_uploads")
 def list_uploads() -> Dict[str, List[str]]:
     """
@@ -340,18 +449,18 @@ def delete_upload_folder(folder_id: str) -> Dict[str, str]:
 async def improve_model(
     dataset_path: str, 
     model_name: str, 
-    sampling_factor: float
+    prune_factor: float
 ) -> Dict[str, Any]:
     """
     Trigger model improvement with specified parameters.
     
     This endpoint receives training parameters and initiates the model
-    improvement process. Currently returns a confirmation response.
+    improvement process. Updated to use prune_factor instead of sampling_factor.
     
     Args:
         dataset_path (str): Path to the dataset
         model_name (str): Name of the model to improve
-        sampling_factor (float): Sampling factor for data selection (0.0-1.0)
+        prune_factor (float): Prune factor for data selection (0.0-1.0)
         
     Returns:
         Dict[str, Any]: Training status and parameters
@@ -360,7 +469,7 @@ async def improve_model(
         "status": "success", 
         "dataset": dataset_path, 
         "model": model_name, 
-        "sampling_factor": sampling_factor
+        "prune_factor": prune_factor
     }
 
 

@@ -5,10 +5,10 @@ A **full-stack web application** for curating datasets and improving AI models t
 ## 🚀 Features
 
 ### Core Functionality
-- ✅ **Dataset Curation**: Upload and process large datasets with adjustable sampling factors
+- ✅ **Dataset Processing**: Upload and process large datasets with model selection and pruning factors
 - ✅ **Media Processing**: Automatic extraction of frames from videos and image processing
 - ✅ **Gallery Management**: View, preview, and manage processed images with delete functionality
-- ✅ **Model Improvement**: Interface for AI model training with custom parameters
+- ✅ **Model Configuration**: Interface for AI model selection with custom processing parameters
 - ✅ **Responsive UI**: Dark/light mode toggle with modern, clean interface
 
 ### Technical Features
@@ -16,6 +16,7 @@ A **full-stack web application** for curating datasets and improving AI models t
 - **Video Frame Extraction**: Automatic frame extraction from videos using `imageio-ffmpeg`
 - **Real-time Updates**: Auto-refreshing gallery with manual refresh options
 - **Production Ready**: Docker containerization with proper error handling
+- **JSON Configuration**: Model settings and processing parameters sent via JSON headers
 
 ---
 
@@ -103,9 +104,8 @@ coreset_selection/
 ├── backend/
 │   ├── main.py                 # FastAPI application
 │   ├── media_processor.py      # Video/image processing logic
-│   ├── train_utils.py          # Training utilities
 │   ├── requirements.txt        # Python dependencies
-│   ├── Dockerfile             # Backend container
+│   ├── Dockerfile.prod         # Production Dockerfile
 │   ├── uploads/               # Uploaded zip files (gitignored)
 │   └── static/
 │       └── images/            # Processed images (gitignored)
@@ -127,6 +127,8 @@ coreset_selection/
 ### Upload & Processing
 - `POST /upload_zip` - Upload and process zip files
   - Query params: `process_sync` (boolean) for immediate processing
+- `POST /process_data` - Upload with model settings and processing parameters
+  - Headers: `X-Process-Settings` (JSON) containing model configuration
 - `GET /list_uploads` - List uploaded zip files
 - `GET /list_upload_folders` - List processed upload folders
 - `DELETE /delete_upload` - Delete uploaded zip file
@@ -157,11 +159,30 @@ coreset_selection/
 3. Click on images for full-size preview
 4. Use the delete button (×) to remove unwanted files
 
-### 3. Curate Data
-1. Navigate to the "Curate Data" tab
-2. Select dataset path and model parameters
-3. Adjust sampling factor (0.0-1.0)
-4. Click "Curate Data" to start processing
+### 3. Process Data with Model Settings
+1. Navigate to the "Process Data" tab
+2. Upload a `.zip` file containing your dataset
+3. Configure model settings:
+   - **Model Name**: Enter the model architecture (e.g., resnet50, efficientnet)
+   - **Prune Factor**: Adjust data pruning factor (0.0-1.0)
+   - **Max Frames per Video**: Set maximum frames to extract (1-500)
+   - **Frame Interval**: Set interval between extracted frames (1-10 seconds)
+4. Click "Process Data" to start processing with your settings
+
+### 4. Processing Settings JSON Format
+The frontend sends processing settings via JSON header:
+```json
+{
+  "dataset_path": "/app/static/images",
+  "model_name": "resnet50",
+  "prune_factor": 0.5,
+  "processing_settings": {
+    "max_frames_per_video": 100,
+    "frame_interval": 1,
+    "supported_formats": ["jpg", "jpeg", "png", "bmp", "tiff", "gif", "mp4", "avi", "mov", "mkv", "wmv", "flv"]
+  }
+}
+```
 
 ---
 
@@ -236,6 +257,11 @@ docker exec coreset_selection-backend-1 ffmpeg -version
 # Check imageio-ffmpeg installation
 docker exec coreset_selection-backend-1 python3 -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_version())"
 ```
+
+**Processing settings not received:**
+- Check browser network tab for X-Process-Settings header
+- Verify JSON format is valid
+- Check backend logs for parsing errors
 
 ---
 
