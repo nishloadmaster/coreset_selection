@@ -15,3 +15,4 @@ watchdog
 ipykernel
 opencv-python-headless  
 imageio
+imageio-ffmpeg

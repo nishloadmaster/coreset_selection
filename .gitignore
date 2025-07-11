@@ -18,3 +18,5 @@ ENV/
 # OS junk
 .DS_Store
 Thumbs.db
+backend/static
+backend/uploads
