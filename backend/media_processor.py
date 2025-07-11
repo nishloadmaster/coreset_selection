@@ -71,6 +71,20 @@ class MediaProcessor:
         
         # Create output directory if it doesn't exist
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        # Ensure proper permissions for the output directory
+        try:
+            os.chmod(self.output_dir, 0o777)
+        except PermissionError:
+            # If that fails, try with sudo
+            try:
+                import subprocess
+                subprocess.run(["sudo", "chmod", "777", str(self.output_dir)], 
+                             check=True, capture_output=True)
+                print(f"Set permissions for {self.output_dir} using sudo")
+            except (subprocess.CalledProcessError, ImportError) as e:
+                print(f"Warning: Could not set permissions for {self.output_dir}: {e}")
+        except Exception as e:
+            print(f"Warning: Could not set permissions for {self.output_dir}: {e}")
         
         logger.info(f"MediaProcessor initialized for {zip_path} -> {output_dir}")
     
@@ -198,6 +212,11 @@ class MediaProcessor:
             
             # Copy the image file
             shutil.copy2(image_path, output_path)
+            # Ensure proper permissions for the copied file
+            try:
+                os.chmod(output_path, 0o666)
+            except Exception as e:
+                print(f"Warning: Could not set permissions for {output_path}: {e}")
             
             logger.debug(f"Image processed: {image_path.name} -> {unique_filename}")
             return output_path
@@ -251,6 +270,11 @@ class MediaProcessor:
                         frame_path = self.output_dir / frame_filename
                         
                         imageio.imwrite(frame_path, frame)
+                        # Ensure proper permissions for the extracted frame
+                        try:
+                            os.chmod(frame_path, 0o666)
+                        except Exception as e:
+                            print(f"Warning: Could not set permissions for {frame_path}: {e}")
                         extracted_frames.append(frame_path)
                         
                         logger.debug(f"Extracted frame {i+1}/{len(frame_indices)}")

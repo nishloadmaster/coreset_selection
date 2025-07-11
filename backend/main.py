@@ -20,6 +20,7 @@ import os
 import zipfile
 import uuid
 import asyncio
+import subprocess
 from typing import Dict, List, Optional, Any
 
 # Initialize FastAPI application
@@ -31,16 +32,139 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+def create_directory_with_permissions(dir_path: Path):
+    """Create directory with proper permissions."""
+    try:
+        dir_path.mkdir(parents=True, exist_ok=True)
+        # Try to set permissions
+        try:
+            os.chmod(dir_path, 0o777)
+        except PermissionError:
+            # If that fails, try with sudo
+            try:
+                subprocess.run(["sudo", "chmod", "777", str(dir_path)], 
+                             check=True, capture_output=True)
+                print(f"Set permissions for {dir_path} using sudo")
+            except subprocess.CalledProcessError:
+                print(f"Warning: Could not set permissions for {dir_path}")
+                # If sudo fails, try creating in /tmp as fallback
+                if "static/images" in str(dir_path):
+                    fallback_path = Path("/tmp/static_images")
+                    fallback_path.mkdir(parents=True, exist_ok=True)
+                    print(f"Created fallback directory: {fallback_path}")
+                    return fallback_path
+    except Exception as e:
+        print(f"Error creating directory {dir_path}: {e}")
+        # Return a fallback path if creation fails
+        if "static/images" in str(dir_path):
+            fallback_path = Path("/tmp/static_images")
+            fallback_path.mkdir(parents=True, exist_ok=True)
+            print(f"Created fallback directory: {fallback_path}")
+            return fallback_path
+    return dir_path
+
 # Directory configuration
-UPLOAD_DIR = Path("static/images")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR = create_directory_with_permissions(Path("static/images"))
 
 # Create uploads directory for zip files
-ZIP_UPLOAD_DIR = Path("uploads")
-ZIP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+ZIP_UPLOAD_DIR = create_directory_with_permissions(Path("uploads"))
 
 # Mount static files for serving processed images
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+def ensure_directory_permissions():
+    """Ensure all required directories have proper permissions."""
+    try:
+        # Try to set permissions using subprocess with sudo if needed
+        directories = ["static", "static/images", "uploads"]
+        
+        for dir_path in directories:
+            if Path(dir_path).exists():
+                try:
+                    # First try normal chmod
+                    os.chmod(dir_path, 0o777)
+                    print(f"Set permissions for {dir_path}")
+                except PermissionError:
+                    # If that fails, try with sudo
+                    try:
+                        subprocess.run(["sudo", "chmod", "-R", "777", dir_path], 
+                                     check=True, capture_output=True)
+                        print(f"Set permissions for {dir_path} using sudo")
+                    except subprocess.CalledProcessError as e:
+                        print(f"Warning: Could not set permissions for {dir_path}: {e}")
+                        
+        print("Directory permissions set successfully")
+    except Exception as e:
+        print(f"Warning: Could not set directory permissions: {e}")
+
+# Set directory permissions on startup
+ensure_directory_permissions()
+
+def change_permissions_and_copy(upload_folder: Path) -> Dict[str, Any]:
+    """
+    Change permissions of the extracted folder and copy it to zcore_score directory.
+    
+    Args:
+        upload_folder (Path): Path to the extracted folder
+        
+    Returns:
+        Dict[str, Any]: Result of the operation
+    """
+    try:
+        # Change permissions to allow everyone to read and execute
+        os.chmod(upload_folder, 0o755)
+        
+        # Also change permissions for all files and subdirectories recursively
+        for root, dirs, files in os.walk(upload_folder):
+            # Change directory permissions
+            for dir_name in dirs:
+                dir_path = Path(root) / dir_name
+                os.chmod(dir_path, 0o755)
+            
+            # Change file permissions
+            for file_name in files:
+                file_path = Path(root) / file_name
+                os.chmod(file_path, 0o644)
+        
+        print(f"Permissions changed for folder: {upload_folder}")
+        
+        # Copy the folder to zcore_score directory
+        zcore_score_dir = Path("/home/vp-dev/projects/coreset_selection/zcore_score/data")
+        zcore_score_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create a unique name for the copied folder
+        folder_name = upload_folder.name
+        target_folder = zcore_score_dir / folder_name
+        
+        # If target folder exists, add a counter
+        counter = 1
+        original_name = folder_name
+        while target_folder.exists():
+            folder_name = f"{original_name}_{counter}"
+            target_folder = zcore_score_dir / folder_name
+            counter += 1
+        
+        # Copy the entire folder
+        shutil.copytree(upload_folder, target_folder)
+        
+        print(f"Folder copied to: {target_folder}")
+        _name = Path(target_folder).name
+        print("folder name: ", Path(target_folder).name)
+        print("running pipeline")
+        os.system(f"./run_pipeline.sh {_name}")
+        return {
+            "status": "success",
+            "original_folder": str(upload_folder),
+            "copied_folder": str(target_folder),
+            "permissions_changed": True
+        }
+        
+    except Exception as e:
+        print(f"Error in change_permissions_and_copy: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
 
 
 def extract_zip_background(zip_path: Path) -> Dict[str, Any]:
@@ -62,8 +186,7 @@ def extract_zip_background(zip_path: Path) -> Dict[str, Any]:
     try:
         # Create a unique folder for this upload
         upload_id = str(uuid.uuid4())
-        upload_folder = UPLOAD_DIR / upload_id
-        upload_folder.mkdir(parents=True, exist_ok=True)
+        upload_folder = create_directory_with_permissions(UPLOAD_DIR / upload_id)
         
         print(f"Processing zip file: {zip_path}")
         print(f"Output folder: {upload_folder}")
@@ -75,11 +198,15 @@ def extract_zip_background(zip_path: Path) -> Dict[str, Any]:
         print(f"Extraction complete, {len(all_images)} files processed.")
         print(f"Files saved to: {upload_folder}")
         
+        # After successful extraction, change permissions and copy
+        result = change_permissions_and_copy(upload_folder)
+        
         return {
             "status": "success",
             "upload_id": upload_id,
             "processed_files": len(all_images),
-            "output_folder": str(upload_folder)
+            "output_folder": str(upload_folder),
+            "permissions_result": result
         }
         
     except Exception as e:
@@ -109,8 +236,7 @@ async def extract_zip_sync(zip_path: Path) -> Dict[str, Any]:
     try:
         # Create a unique folder for this upload
         upload_id = str(uuid.uuid4())
-        upload_folder = UPLOAD_DIR / upload_id
-        upload_folder.mkdir(parents=True, exist_ok=True)
+        upload_folder = create_directory_with_permissions(UPLOAD_DIR / upload_id)
         
         print(f"Processing zip file synchronously: {zip_path}")
         print(f"Output folder: {upload_folder}")
@@ -122,12 +248,16 @@ async def extract_zip_sync(zip_path: Path) -> Dict[str, Any]:
         print(f"Extraction complete, {len(all_images)} files processed.")
         print(f"Files saved to: {upload_folder}")
         
+        # After successful extraction, change permissions and copy
+        result = change_permissions_and_copy(upload_folder)
+        
         return {
             "status": "success",
             "upload_id": upload_id,
             "processed_files": len(all_images),
             "output_folder": str(upload_folder),
-            "files": all_images
+            "files": all_images,
+            "permissions_result": result
         }
         
     except Exception as e:
