@@ -3,10 +3,11 @@
 This project is a **full-stack local tool** to:
 
 ✅ Curate datasets for improving local AI models (with adjustable sampling factor).  
-✅ Upload `.zip` files containing large image datasets (supports 50,000+ images, background extraction with stability).  
-✅ View and manage uploaded images in a gallery with delete and preview.  
+✅ Upload `.zip` files containing **images and videos**, with automatic frame extraction from videos.  
+✅ Supports **large datasets (50,000+ images/frames) with background extraction and stability**.  
+✅ View and manage uploaded images and extracted frames in a gallery with delete and preview.  
 ✅ Dark/light mode toggle for comfortable use.  
-✅ Clean, responsive frontend with clear tabbed navigation.
+✅ Clean, responsive frontend with clear tabbed navigation and toast notifications.
 
 ---
 
@@ -14,6 +15,7 @@ This project is a **full-stack local tool** to:
 
 - **Frontend:** React + TypeScript + Vite
 - **Backend:** FastAPI + Python
+- **Video Frame Extraction:** `imageio` (replacing `opencv-python` for stability)
 - **Containerization:** Docker (optional)
 
 ---
@@ -21,17 +23,17 @@ This project is a **full-stack local tool** to:
 ## Features
 
 ### Frontend
-- Curate Data: Select dataset path, model, sampling factor, and trigger backend training.
-- Upload Data: Upload `.zip` files containing images.
-- Gallery: Auto-refreshes to display extracted images, with manual refresh button, preview modal, and delete support.
+- **Curate Data:** Select dataset path, model, sampling factor, and trigger backend training.
+- **Upload Data:** Upload `.zip` files containing **images and videos**.
+- **Gallery:** Auto-refreshes to display extracted images and frames, with manual refresh, preview modal, and delete support.
 - Responsive UI with structured layout and dark/light toggle.
 - Toast notifications when redirecting the user back to Upload if Gallery is empty.
 
 ### Backend
 - `/improve_model`: Receives dataset path, model name, and sampling factor, returns confirmation (expandable for training integration).
-- `/upload_zip`: Streams `.zip` files, extracts on-disk incrementally to avoid memory overload, background extraction with progress logs.
-- `/list_images`: Lists extracted images.
-- `/delete_image`: Deletes an image from the gallery.
+- `/upload_zip`: Streams `.zip` files, extracts on-disk incrementally to avoid memory overload, **uses `MediaProcessor` to extract frames from videos**, and logs progress.
+- `/list_images`: Lists extracted images and frames.
+- `/delete_image`: Deletes an image/frame from the gallery.
 - Serves images via `/static/images` for frontend gallery use.
 
 ---
@@ -55,7 +57,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 - Install dependencies:
 ```bash
-pip install fastapi uvicorn python-multipart
+pip install -r requirements.txt
 ```
 - Run the backend:
 ```bash
@@ -86,10 +88,11 @@ npm run dev
 
 ## Usage Notes
 
-✅ Upload large `.zip` files (50,000+ images supported) via Upload Data tab.  
-✅ Images will be extracted in the background while the frontend remains usable.  
-✅ Gallery will auto-refresh every 10 seconds and can be manually refreshed.
-✅ Use Curate Data to test local AI model curation workflows.
+✅ Upload `.zip` files with images and videos; videos will have frames extracted automatically for use in the gallery and pipelines.  
+✅ Handles large `.zip` uploads while the frontend remains usable.  
+✅ Gallery auto-refreshes every 10 seconds, with manual refresh button available.  
+✅ Curate Data section for local AI model improvement workflows.  
+✅ Dark/light toggle for comfortable long work sessions.
 
 ---
 
@@ -104,6 +107,8 @@ project-root/
 │   ├── package.json
 │   └── vite.config.ts
 ├── main.py
+├── media_processor.py
+├── requirements.txt
 ├── static/
 │   └── images/
 ├── .gitignore
