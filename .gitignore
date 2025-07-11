@@ -1,0 +1,20 @@
+# Node / React
+node_modules/
+dist/
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+venv/
+ENV/
+.venv/
+.idea/
+.vscode/
+
+# OS junk
+.DS_Store
+Thumbs.db
