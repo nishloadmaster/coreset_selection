@@ -28,6 +28,3 @@ structlog==23.2.0
 # Security and validation
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-
-# CORS and middleware
-python-cors==1.7.0
