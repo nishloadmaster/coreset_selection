@@ -31,6 +31,28 @@ interface UploadResponse {
   };
 }
 
+interface UploadAndCurateResponse {
+  status: string;
+  message: string;
+  filename?: string;
+  path?: string;
+  model_name?: string;
+  sampling_factor?: number;
+  processing_result?: {
+    status: string;
+    upload_id?: string;
+    processed_files?: number;
+    files?: string[];
+  };
+  curation_result?: {
+    status: string;
+    dataset: string;
+    model: string;
+    sampling_factor: number;
+  };
+  workflow?: string;
+}
+
 interface ImageListResponse {
   images: string[];
 }
@@ -66,7 +88,7 @@ interface CurateDataResponse {
 
 // Component State Interfaces
 interface AppState {
-  activeTab: 'upload' | 'gallery' | 'curate';
+  activeTab: 'data_management' | 'gallery' | 'upload_and_curate';
   images: string[];
   uploads: string[];
   uploadFolders: UploadFolderResponse['upload_folders'];
@@ -79,6 +101,10 @@ interface AppState {
   darkMode: boolean;
   curateData: {
     datasetPath: string;
+    modelName: string;
+    samplingFactor: number;
+  };
+  uploadAndCurateData: {
     modelName: string;
     samplingFactor: number;
   };
@@ -97,7 +123,7 @@ interface AppState {
 function App() {
   // Application state
   const [state, setState] = useState<AppState>({
-    activeTab: 'upload',
+    activeTab: 'data_management',
     images: [],
     uploads: [],
     uploadFolders: [],
@@ -110,6 +136,10 @@ function App() {
     darkMode: false,
     curateData: {
       datasetPath: '',
+      modelName: '',
+      samplingFactor: 0.5,
+    },
+    uploadAndCurateData: {
       modelName: '',
       samplingFactor: 0.5,
     },
@@ -298,17 +328,84 @@ function App() {
       const response = await axios.post<CurateDataResponse>(`${API_BASE_URL}/improve_model`, {
         dataset_path: datasetPath,
         model_name: modelName,
-        sampling_factor: samplingFactor,
+        sampling_factor: samplingFactor
       });
 
+      showToast('Model improvement process triggered successfully!', 'success');
+      console.log('Curate response:', response.data);
+    } catch (error) {
+      console.error('Error triggering model improvement:', error);
+      showToast('Failed to trigger model improvement', 'error');
+    }
+  };
+
+  /**
+   * Handle upload and curate form submission
+   */
+  const handleUploadAndCurate = async () => {
+    if (!state.selectedFile) {
+      showToast('Please select a file to upload', 'error');
+      return;
+    }
+
+    const { modelName, samplingFactor } = state.uploadAndCurateData;
+    
+    if (!modelName) {
+      showToast('Please enter a model name', 'error');
+      return;
+    }
+
+    setState(prev => ({ ...prev, isUploading: true, uploadProgress: 0 }));
+
+    try {
+      const formData = new FormData();
+      formData.append('file', state.selectedFile);
+      formData.append('model_name', modelName);
+      formData.append('sampling_factor', samplingFactor.toString());
+      formData.append('process_sync', 'true');
+
+      const response = await axios.post<UploadAndCurateResponse>(
+        `${API_BASE_URL}/upload_and_curate`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          onUploadProgress: (progressEvent) => {
+            if (progressEvent.total) {
+              const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              setState(prev => ({ ...prev, uploadProgress: progress }));
+            }
+          },
+        }
+      );
+
+      setState(prev => ({ 
+        ...prev, 
+        isUploading: false, 
+        uploadProgress: 0,
+        selectedFile: null 
+      }));
+
       if (response.data.status === 'success') {
-        showToast('Model improvement process started successfully', 'success');
+        showToast('File uploaded, processed, and curation triggered successfully!', 'success');
+        console.log('Upload and curate response:', response.data);
+        
+        // Refresh data
+        loadImages();
+        loadUploads();
+        loadUploadFolders();
       } else {
-        showToast('Failed to start model improvement', 'error');
+        showToast('Upload and curation failed', 'error');
       }
     } catch (error) {
-      console.error('Error starting model improvement:', error);
-      showToast('Failed to start model improvement', 'error');
+      console.error('Error uploading and curating:', error);
+      showToast('Failed to upload and curate file', 'error');
+      setState(prev => ({ 
+        ...prev, 
+        isUploading: false, 
+        uploadProgress: 0 
+      }));
     }
   };
 
@@ -357,11 +454,11 @@ function App() {
     }));
   };
 
-  // Redirect to upload if gallery is empty
+  // Redirect to data management if gallery is empty
   useEffect(() => {
     if (state.activeTab === 'gallery' && state.images.length === 0) {
       showToast('No images found. Please upload some data first.', 'info');
-      setState(prev => ({ ...prev, activeTab: 'upload' }));
+      setState(prev => ({ ...prev, activeTab: 'data_management' }));
     }
   }, [state.activeTab, state.images.length]);
 
@@ -382,10 +479,10 @@ function App() {
       {/* Navigation Tabs */}
       <nav className="nav">
         <button 
-          className={`nav-button ${state.activeTab === 'upload' ? 'active' : ''}`}
-          onClick={() => setState(prev => ({ ...prev, activeTab: 'upload' }))}
+          className={`nav-button ${state.activeTab === 'data_management' ? 'active' : ''}`}
+          onClick={() => setState(prev => ({ ...prev, activeTab: 'data_management' }))}
         >
-          Upload Data
+          Data Management
         </button>
         <button 
           className={`nav-button ${state.activeTab === 'gallery' ? 'active' : ''}`}
@@ -394,87 +491,154 @@ function App() {
           Gallery
         </button>
         <button 
-          className={`nav-button ${state.activeTab === 'curate' ? 'active' : ''}`}
-          onClick={() => setState(prev => ({ ...prev, activeTab: 'curate' }))}
+          className={`nav-button ${state.activeTab === 'upload_and_curate' ? 'active' : ''}`}
+          onClick={() => setState(prev => ({ ...prev, activeTab: 'upload_and_curate' }))}
         >
-          Curate Data
+          Upload & Curate
         </button>
       </nav>
 
       {/* Main Content */}
       <main className="main-content">
-        {/* Upload Data Tab */}
-        {state.activeTab === 'upload' && (
-          <div className="upload-section">
-            <h2>Upload Data</h2>
-            <p>Upload a zip file containing images and videos for processing.</p>
+        {/* Data Management Tab - Combined Upload and Curate */}
+        {state.activeTab === 'data_management' && (
+          <div className="data-management-section">
+            <h2>Data Management</h2>
+            <p>Upload data and configure model improvement parameters in one place.</p>
             
-            <div className="upload-area">
-              <input
-                type="file"
-                accept=".zip"
-                onChange={handleFileSelect}
-                className="file-input"
-              />
-              {state.selectedFile && (
-                <p className="selected-file">Selected: {state.selectedFile.name}</p>
-              )}
+            {/* Upload Section */}
+            <div className="upload-section">
+              <h3>Upload Data</h3>
+              <p>Upload a zip file containing images and videos for processing.</p>
+              
+              <div className="upload-area">
+                <input
+                  type="file"
+                  accept=".zip"
+                  onChange={handleFileSelect}
+                  className="file-input"
+                />
+                {state.selectedFile && (
+                  <p className="selected-file">Selected: {state.selectedFile.name}</p>
+                )}
+                
+                <button 
+                  onClick={handleUpload}
+                  disabled={!state.selectedFile || state.isUploading}
+                  className="upload-button"
+                >
+                  {state.isUploading ? 'Uploading...' : 'Upload & Process'}
+                </button>
+                
+                {state.isUploading && (
+                  <div className="progress-bar">
+                    <div 
+                      className="progress-fill" 
+                      style={{ width: `${state.uploadProgress}%` }}
+                    ></div>
+                  </div>
+                )}
+              </div>
+
+              {/* Upload History */}
+              <div className="upload-history">
+                <h4>Upload History</h4>
+                <div className="upload-list">
+                  {state.uploads.map((upload, index) => (
+                    <div key={index} className="upload-item">
+                      <span>{upload}</span>
+                      <button 
+                        onClick={() => deleteUpload(upload)}
+                        className="delete-button"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Upload Folders */}
+              <div className="upload-folders">
+                <h4>Processed Uploads</h4>
+                <div className="folder-list">
+                  {state.uploadFolders.map((folder) => (
+                    <div key={folder.folder_id} className="folder-item">
+                      <div className="folder-info">
+                        <strong>Folder: {folder.folder_id}</strong>
+                        <span>{folder.files.length} files</span>
+                      </div>
+                      <button 
+                        onClick={() => deleteUploadFolder(folder.folder_id)}
+                        className="delete-button"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Curate Section */}
+            <div className="curate-section">
+              <h3>Curate Data</h3>
+              <p>Configure parameters for model improvement process.</p>
+              
+              <div className="form-group">
+                <label htmlFor="datasetPath">Dataset Path:</label>
+                <input
+                  type="text"
+                  id="datasetPath"
+                  value={state.curateData.datasetPath}
+                  onChange={(e) => setState(prev => ({
+                    ...prev,
+                    curateData: { ...prev.curateData, datasetPath: e.target.value }
+                  }))}
+                  placeholder="Enter dataset path"
+                  className="form-input"
+                />
+              </div>
+              
+              <div className="form-group">
+                <label htmlFor="modelName">Model Name:</label>
+                <input
+                  type="text"
+                  id="modelName"
+                  value={state.curateData.modelName}
+                  onChange={(e) => setState(prev => ({
+                    ...prev,
+                    curateData: { ...prev.curateData, modelName: e.target.value }
+                  }))}
+                  placeholder="Enter model name"
+                  className="form-input"
+                />
+              </div>
+              
+              <div className="form-group">
+                <label htmlFor="samplingFactor">Sampling Factor (0.0 - 1.0):</label>
+                <input
+                  type="range"
+                  id="samplingFactor"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={state.curateData.samplingFactor}
+                  onChange={(e) => setState(prev => ({
+                    ...prev,
+                    curateData: { ...prev.curateData, samplingFactor: parseFloat(e.target.value) }
+                  }))}
+                  className="form-range"
+                />
+                <span>{state.curateData.samplingFactor}</span>
+              </div>
               
               <button 
-                onClick={handleUpload}
-                disabled={!state.selectedFile || state.isUploading}
-                className="upload-button"
+                onClick={handleCurateData}
+                className="curate-button"
               >
-                {state.isUploading ? 'Uploading...' : 'Upload & Process'}
+                Curate Data
               </button>
-              
-              {state.isUploading && (
-                <div className="progress-bar">
-                  <div 
-                    className="progress-fill" 
-                    style={{ width: `${state.uploadProgress}%` }}
-                  ></div>
-                </div>
-              )}
-            </div>
-
-            {/* Upload History */}
-            <div className="upload-history">
-              <h3>Upload History</h3>
-              <div className="upload-list">
-                {state.uploads.map((upload, index) => (
-                  <div key={index} className="upload-item">
-                    <span>{upload}</span>
-                    <button 
-                      onClick={() => deleteUpload(upload)}
-                      className="delete-button"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Upload Folders */}
-            <div className="upload-folders">
-              <h3>Processed Uploads</h3>
-              <div className="folder-list">
-                {state.uploadFolders.map((folder) => (
-                  <div key={folder.folder_id} className="folder-item">
-                    <div className="folder-info">
-                      <strong>Folder: {folder.folder_id}</strong>
-                      <span>{folder.files.length} files</span>
-                    </div>
-                    <button 
-                      onClick={() => deleteUploadFolder(folder.folder_id)}
-                      className="delete-button"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
         )}
@@ -515,66 +679,88 @@ function App() {
           </div>
         )}
 
-        {/* Curate Data Tab */}
-        {state.activeTab === 'curate' && (
-          <div className="curate-section">
-            <h2>Curate Data</h2>
-            <p>Configure parameters for model improvement process.</p>
+        {/* Upload & Curate Tab */}
+        {state.activeTab === 'upload_and_curate' && (
+          <div className="upload-curate-section">
+            <h2>Upload & Curate</h2>
+            <p>Upload a zip file and immediately trigger the curation process in one workflow.</p>
             
-            <div className="form-group">
-              <label htmlFor="datasetPath">Dataset Path:</label>
+            <div className="upload-area">
               <input
-                type="text"
-                id="datasetPath"
-                value={state.curateData.datasetPath}
-                onChange={(e) => setState(prev => ({
-                  ...prev,
-                  curateData: { ...prev.curateData, datasetPath: e.target.value }
-                }))}
-                placeholder="Enter dataset path"
-                className="form-input"
+                type="file"
+                accept=".zip"
+                onChange={handleFileSelect}
+                className="file-input"
               />
+              {state.selectedFile && (
+                <p className="selected-file">Selected: {state.selectedFile.name}</p>
+              )}
             </div>
-            
-            <div className="form-group">
-              <label htmlFor="modelName">Model Name:</label>
-              <input
-                type="text"
-                id="modelName"
-                value={state.curateData.modelName}
-                onChange={(e) => setState(prev => ({
-                  ...prev,
-                  curateData: { ...prev.curateData, modelName: e.target.value }
-                }))}
-                placeholder="Enter model name"
-                className="form-input"
-              />
+
+            <div className="curate-form">
+              <h3>Curation Parameters</h3>
+              
+              <div className="form-group">
+                <label htmlFor="curateModelName">Model Name:</label>
+                <input
+                  type="text"
+                  id="curateModelName"
+                  value={state.uploadAndCurateData.modelName}
+                  onChange={(e) => setState(prev => ({
+                    ...prev,
+                    uploadAndCurateData: { ...prev.uploadAndCurateData, modelName: e.target.value }
+                  }))}
+                  placeholder="Enter model name"
+                  className="form-input"
+                />
+              </div>
+              
+              <div className="form-group">
+                <label htmlFor="curateSamplingFactor">Sampling Factor (0.0 - 1.0):</label>
+                <input
+                  type="range"
+                  id="curateSamplingFactor"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={state.uploadAndCurateData.samplingFactor}
+                  onChange={(e) => setState(prev => ({
+                    ...prev,
+                    uploadAndCurateData: { ...prev.uploadAndCurateData, samplingFactor: parseFloat(e.target.value) }
+                  }))}
+                  className="form-range"
+                />
+                <span>{state.uploadAndCurateData.samplingFactor}</span>
+              </div>
+              
+              <button 
+                onClick={handleUploadAndCurate}
+                disabled={!state.selectedFile || state.isUploading || !state.uploadAndCurateData.modelName}
+                className="upload-curate-button"
+              >
+                {state.isUploading ? 'Uploading & Processing...' : 'Upload & Curate'}
+              </button>
+              
+              {state.isUploading && (
+                <div className="progress-bar">
+                  <div 
+                    className="progress-fill" 
+                    style={{ width: `${state.uploadProgress}%` }}
+                  ></div>
+                </div>
+              )}
             </div>
-            
-            <div className="form-group">
-              <label htmlFor="samplingFactor">Sampling Factor (0.0 - 1.0):</label>
-              <input
-                type="range"
-                id="samplingFactor"
-                min="0"
-                max="1"
-                step="0.1"
-                value={state.curateData.samplingFactor}
-                onChange={(e) => setState(prev => ({
-                  ...prev,
-                  curateData: { ...prev.curateData, samplingFactor: parseFloat(e.target.value) }
-                }))}
-                className="form-range"
-              />
-              <span>{state.curateData.samplingFactor}</span>
+
+            <div className="workflow-info">
+              <h3>Workflow Information</h3>
+              <ul>
+                <li>Upload your zip file containing images and videos</li>
+                <li>Configure model name and sampling factor</li>
+                <li>Click "Upload & Curate" to process the data and trigger model improvement</li>
+                <li>The system will extract media files and immediately start the curation process</li>
+                <li>Results will be available in the Gallery tab</li>
+              </ul>
             </div>
-            
-            <button 
-              onClick={handleCurateData}
-              className="curate-button"
-            >
-              Curate Data
-            </button>
           </div>
         )}
       </main>

@@ -9,7 +9,7 @@ Author: AI Model Improver Team
 Version: 1.0.0
 """
 
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks, Query
+from fastapi import FastAPI, UploadFile, File, BackgroundTasks, Query, Form
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -142,7 +142,10 @@ async def extract_zip_sync(zip_path: Path) -> Dict[str, Any]:
 async def upload_zip(
     background_tasks: BackgroundTasks, 
     file: UploadFile = File(...),
-    process_sync: bool = Query(False, description="Process immediately instead of background")
+    process_sync: bool = Form(False),
+    model_name: str = Form("Model1"),
+    labels: str = Form(""),
+    sampling_factor: float = Form(0.5)
 ) -> Dict[str, Any]:
     """
     Upload and process a zip file containing images and videos.
@@ -154,6 +157,9 @@ async def upload_zip(
         background_tasks (BackgroundTasks): FastAPI background tasks
         file (UploadFile): The uploaded zip file
         process_sync (bool): If True, processes immediately and returns results
+        model_name (str): Name of the model to improve
+        labels (str): Comma-separated labels
+        sampling_factor (float): Sampling factor for data selection (0.0-1.0)
         
     Returns:
         Dict[str, Any]: Upload and processing status
@@ -161,12 +167,143 @@ async def upload_zip(
     Raises:
         HTTPException: If file validation fails or processing errors occur
     """
+    # Print all parameters received
+    print("=" * 50)
+    print(f"Model name: {model_name}")
+    print(f"Labels (raw): '{labels}'")
+    print(f"Sampling factor: {sampling_factor}")
+
+    
     try:
         # Validate file type
         if not file.filename or not file.filename.lower().endswith('.zip'):
             return JSONResponse(
                 status_code=400, 
                 content={"error": "File must be a zip file"}
+            )
+        
+        # Validate sampling factor
+        if not 0.0 <= sampling_factor <= 1.0:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Sampling factor must be between 0.0 and 1.0"}
+            )
+        
+        # Parse labels into list
+        labels_list = [label.strip() for label in labels.split(',') if label.strip()] if labels else []
+        print(f"Parsed labels list: {labels_list}")
+        print(f"Number of labels: {len(labels_list)}")
+        
+        # Save zip file to uploads directory with original filename
+        zip_filename = file.filename
+        
+        # Ensure filename is unique
+        counter = 1
+        original_name = zip_filename
+        while (ZIP_UPLOAD_DIR / zip_filename).exists():
+            name_parts = original_name.rsplit('.', 1)
+            if len(name_parts) > 1:
+                zip_filename = f"{name_parts[0]}_{counter}.{name_parts[1]}"
+            else:
+                zip_filename = f"{original_name}_{counter}"
+            counter += 1
+        
+        zip_path = ZIP_UPLOAD_DIR / zip_filename
+        
+        # Save the uploaded file
+        with open(zip_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        print(f"Zip file saved to: {zip_path}")
+        print(f"Parameters for processing:")
+        print(f"  - Model: {model_name}")
+        print(f"  - Labels: {labels_list}")
+        print(f"  - Sampling factor: {sampling_factor}")
+        
+        if process_sync:
+            # Process immediately and return results
+            result = await extract_zip_sync(zip_path)
+            return {
+                "status": "success",
+                "message": f"Zip file uploaded and processed immediately.",
+                "filename": zip_filename,
+                "path": str(zip_path),
+                "processing_result": result,
+                "model_name": model_name,
+                "labels": labels_list,
+                "sampling_factor": sampling_factor
+            }
+        else:
+            # Process in background
+            background_tasks.add_task(extract_zip_background, zip_path)
+            return {
+                "status": "success", 
+                "message": f"Zip file uploaded and saved to {zip_path}. Extraction is processing in the background.",
+                "filename": zip_filename,
+                "path": str(zip_path),
+                "processing": "background",
+                "model_name": model_name,
+                "labels": labels_list,
+                "sampling_factor": sampling_factor
+            }
+            
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.post("/upload_and_curate")
+async def upload_and_curate(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    model_name: str = Query(..., description="Name of the model to improve"),
+    sampling_factor: float = Query(0.5, description="Sampling factor for data selection (0.0-1.0)"),
+    process_sync: bool = Query(True, description="Process immediately instead of background")
+) -> Dict[str, Any]:
+    """
+    Upload a zip file and immediately trigger curation process.
+    
+    This endpoint combines upload and curate functionality in a single workflow.
+    Users can upload their data and immediately start the model improvement process.
+    
+    Args:
+        background_tasks (BackgroundTasks): FastAPI background tasks
+        file (UploadFile): The uploaded zip file
+        model_name (str): Name of the model to improve
+        sampling_factor (float): Sampling factor for data selection (0.0-1.0)
+        process_sync (bool): If True, processes immediately and returns results
+        
+    Returns:
+        Dict[str, Any]: Upload, processing, and curation status
+        
+    Raises:
+        HTTPException: If file validation fails or processing errors occur
+    """
+    # Print all parameters received
+    print("=" * 50)
+    print("UPLOAD_AND_CURATE ROUTE PARAMETERS:")
+    print("=" * 50)
+    print(f"File name: {file.filename}")
+    print(f"File content type: {file.content_type}")
+    print(f"File size: {file.size if hasattr(file, 'size') else 'Unknown'}")
+    print(f"Model name: {model_name}")
+    print(f"Sampling factor: {sampling_factor}")
+    print(f"Process sync: {process_sync}")
+    print(f"Background tasks: {background_tasks}")
+    print("=" * 50)
+    
+    try:
+        # Validate file type
+        if not file.filename or not file.filename.lower().endswith('.zip'):
+            return JSONResponse(
+                status_code=400, 
+                content={"error": "File must be a zip file"}
+            )
+        
+        # Validate sampling factor
+        if not 0.0 <= sampling_factor <= 1.0:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Sampling factor must be between 0.0 and 1.0"}
             )
         
         # Save zip file to uploads directory with original filename
@@ -192,24 +329,77 @@ async def upload_zip(
         print(f"Zip file saved to: {zip_path}")
         
         if process_sync:
-            # Process immediately and return results
-            result = await extract_zip_sync(zip_path)
-            return {
-                "status": "success",
-                "message": f"Zip file uploaded and processed immediately.",
-                "filename": zip_filename,
-                "path": str(zip_path),
-                "processing_result": result
-            }
+            # Process immediately and trigger curation
+            processing_result = await extract_zip_sync(zip_path)
+            
+            if processing_result["status"] == "success":
+                # Trigger curation with the processed data
+                curation_result = await improve_model(
+                    dataset_path=processing_result["output_folder"],
+                    model_name=model_name,
+                    sampling_factor=sampling_factor
+                )
+                
+                return {
+                    "status": "success",
+                    "message": "Zip file uploaded, processed, and curation triggered successfully.",
+                    "filename": zip_filename,
+                    "path": str(zip_path),
+                    "processing_result": processing_result,
+                    "curation_result": curation_result,
+                    "workflow": "upload_and_curate_sync"
+                }
+            else:
+                return {
+                    "status": "error",
+                    "message": "File processing failed",
+                    "processing_result": processing_result,
+                    "workflow": "upload_and_curate_sync"
+                }
         else:
-            # Process in background
-            background_tasks.add_task(extract_zip_background, zip_path)
+            # Process in background and trigger curation
+            def process_and_curate_background(zip_path: Path, model_name: str, sampling_factor: float):
+                """Background task to process zip and trigger curation"""
+                try:
+                    # Process the zip file
+                    processing_result = extract_zip_background(zip_path)
+                    
+                    if processing_result["status"] == "success":
+                        # Trigger curation
+                        curation_result = {
+                            "status": "success",
+                            "dataset": processing_result["output_folder"],
+                            "model": model_name,
+                            "sampling_factor": sampling_factor,
+                            "message": "Curation triggered for processed dataset"
+                        }
+                        
+                        print(f"Background processing and curation completed for {zip_path}")
+                        print(f"Processing result: {processing_result}")
+                        print(f"Curation result: {curation_result}")
+                    else:
+                        print(f"Background processing failed for {zip_path}: {processing_result}")
+                        
+                except Exception as e:
+                    print(f"Error in background processing and curation: {e}")
+            
+            # Add background task
+            background_tasks.add_task(
+                process_and_curate_background, 
+                zip_path, 
+                model_name, 
+                sampling_factor
+            )
+            
             return {
                 "status": "success", 
-                "message": f"Zip file uploaded and saved to {zip_path}. Extraction is processing in the background.",
+                "message": f"Zip file uploaded and saved to {zip_path}. Processing and curation are running in the background.",
                 "filename": zip_filename,
                 "path": str(zip_path),
-                "processing": "background"
+                "model_name": model_name,
+                "sampling_factor": sampling_factor,
+                "processing": "background",
+                "workflow": "upload_and_curate_background"
             }
             
     except Exception as e:
