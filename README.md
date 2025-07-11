@@ -1,4 +1,4 @@
-# AI Model Improver
+# Data Curator
 
 This project is a **full-stack local tool** to:
 
