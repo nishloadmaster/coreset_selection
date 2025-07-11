@@ -136,8 +136,9 @@ function App() {
                         <option value='/path/to/dataset2'>Dataset 2</option>
                     </select>
                     <select value={modelName} onChange={e => setModelName(e.target.value)} style={inputStyle}>
-                        <option value='Model1'>Model1</option>
-                        <option value='Model2'>Model2</option>
+                        <option value='Model1'>YOLO v8 COCO</option>
+                        <option value='Model2'>RESNET50</option>
+                        <option value='Model3'>CLIP</option>
                     </select>
                     <input type='number' min={0} max={1} step={0.01} value={samplingFactor} onChange={e => setSamplingFactor(parseFloat(e.target.value))} style={inputStyle} />
                     <button onClick={handleSubmit} disabled={loading} style={smallButtonStyle}>{loading ? 'Processing...' : 'Curate Data'}</button>
