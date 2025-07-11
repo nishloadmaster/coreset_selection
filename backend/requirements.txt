@@ -1,18 +1,33 @@
-torch==2.2.2
-torchvision==0.17.2
-lightly==1.4.5
-pandas
-scikit-learn
-fastapi
-uvicorn
-python-multipart
-opencv-python
-numpy
-pydantic
-requests
-pillow
-watchdog
-ipykernel
-opencv-python-headless  
-imageio
-imageio-ffmpeg
+# AI Model Improver - Backend Dependencies
+# Production-ready requirements with specific versions for stability
+
+# FastAPI and ASGI server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# File handling and processing
+python-multipart==0.0.6
+aiofiles==23.2.1
+
+# Media processing
+imageio==2.33.0
+imageio-ffmpeg==0.4.9
+
+# Data handling and utilities
+python-dotenv==1.0.0
+pydantic==2.5.0
+
+# Development and testing (optional for production)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.2
+
+# Logging and monitoring
+structlog==23.2.0
+
+# Security and validation
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# CORS and middleware
+python-cors==1.7.0

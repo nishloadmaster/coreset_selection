@@ -2,13 +2,50 @@ version: '3.8'
 
 services:
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai-model-improver-backend
     ports:
       - "8050:8050"
     volumes:
-      - ./backend:/app
-      - ./backend/static:/app/static
       - ./backend/uploads:/app/uploads
+      - ./backend/static:/app/static
     environment:
-      - PYTHONUNBUFFERED=1
-    restart: unless-stopped 
+      - PYTHONPATH=/app
+      - BACKEND_HOST=0.0.0.0
+      - BACKEND_PORT=8050
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8050/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - ai-model-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ai-model-improver-frontend
+    ports:
+      - "3058:80"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8050
+    restart: unless-stopped
+    networks:
+      - ai-model-network
+
+networks:
+  ai-model-network:
+    driver: bridge
+
+volumes:
+  uploads:
+    driver: local
+  static:
+    driver: local 
