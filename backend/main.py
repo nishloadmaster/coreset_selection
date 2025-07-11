@@ -2,10 +2,9 @@ from fastapi import FastAPI, UploadFile, File, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-from zipfile import ZipFile
 import shutil
 import tempfile
-import os
+from media_processor import MediaProcessor
 
 app = FastAPI()
 
@@ -16,21 +15,9 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 def extract_zip_background(zip_path: Path):
     try:
-        with ZipFile(zip_path, 'r') as zip_ref:
-            for idx, member in enumerate(zip_ref.infolist(), 1):
-                if member.is_dir():
-                    continue
-                member_name = Path(member.filename).name
-                target_path = UPLOAD_DIR / member_name
-                counter = 1
-                while target_path.exists():
-                    target_path = UPLOAD_DIR / f"{target_path.stem}_{counter}{target_path.suffix}"
-                    counter += 1
-                with zip_ref.open(member) as source_file, open(target_path, "wb") as out_file:
-                    shutil.copyfileobj(source_file, out_file)
-                if idx % 1000 == 0:
-                    print(f"Extracted {idx} files so far...")
-        print("Extraction completed.")
+        processor = MediaProcessor(zip_path, UPLOAD_DIR)
+        all_images = processor.process()
+        print(f"Extraction complete, {len(all_images)} files processed.")
     except Exception as e:
         print(f"Error during extraction: {e}")
     finally:
@@ -49,7 +36,7 @@ async def upload_zip(background_tasks: BackgroundTasks, file: UploadFile = File(
 
 @app.get("/list_images")
 def list_images():
-    images = [f"/static/images/{p.name}" for p in UPLOAD_DIR.glob("*") if p.is_file()]
+    images = [f"/static/images/{p.name}" for p in UPLOAD_DIR.glob("**/*") if p.is_file()]
     return {"images": images}
 
 @app.delete("/delete_image")
